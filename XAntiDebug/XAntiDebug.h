@@ -3,6 +3,7 @@
 #ifndef _XANTIDEBUG_H
 #define _XANTIDEBUG_H
 
+#define _CRT_SECURE_NO_WARNINGS
 
 #include <vector>
 #include <windows.h>
@@ -17,7 +18,7 @@
 
 //
 // if it is a 64 bit program, this file does not need to include
-//
+// 64位程序不需要包含
 #ifndef _WIN64
 #include "wow64ext.h"
 #endif 
@@ -36,13 +37,13 @@
 #define FLAG_FULLON                          (FLAG_CHECKSUM_NTOSKRNL | FLAG_CHECKSUM_CODESECTION | \
                                               FLAG_DETECT_DEBUGGER | FLAG_DETECT_HARDWAREBREAKPOINT)
 //
-// error status
+// error status【错误状态】
 //
 typedef enum _XAD_STATUS
 {
-	XAD_OK,
-	XAD_ERROR_OPENNTOS,
-	XAD_ERROR_MODULEHANDLE,
+	XAD_OK,//没有发生错误
+	XAD_ERROR_OPENNTOS,//NtQueryInformationProcess操作失败
+	XAD_ERROR_MODULEHANDLE,//内存模块读取错误,不是一个有效的PE文件
 	XAD_ERROR_OPENNTDLL,
 	XAD_ERROR_NTAPI,
 	XAD_ERROR_ALLOCMEM,
@@ -68,6 +69,7 @@ typedef DWORD(WINAPI* fn_SysCall32)(
 
 //
 // code section checksum struct
+// 代码段校验结构体
 //
 typedef struct _CODE_CRC32
 {
@@ -83,6 +85,8 @@ class XAntiDebug
 {
 
 public:
+	//1.当前程序的实例句柄
+	//2.模式标志位
 	XAntiDebug(HMODULE moduleHandle, DWORD flags);
 	~XAntiDebug();
 
@@ -104,17 +108,17 @@ public:
 
 private:
 
-	HMODULE                  _moduleHandle;
-	DWORD                    _flags;
+	HMODULE                  _moduleHandle;//当前程序的实例
+	DWORD                    _flags;//当前保护模式
 
-	BOOL                     _initialized;
-	DWORD                    _major;
-	DWORD                    _minor;
-	BOOL                     _isArch64;
+	BOOL                     _initialized;//是否完成初始化
+	DWORD                    _major;//主系统版本号
+	DWORD                    _minor;//次系统版本号
+	BOOL                     _isArch64;//是否64位处理器
 	BOOL                     _isWow64;
-	BOOL                     _isWow64FsReDriectory;
+	BOOL                     _isWow64FsReDriectory;//是否在wow64目录下操作
 
-	DWORD                    _pageSize;
+	DWORD                    _pageSize;//当前系统内存页的大小，通常4kb
 	PVOID                    _pagePtr;
 	DWORD                    _pageCrc32;
 

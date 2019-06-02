@@ -27,8 +27,8 @@
 #   define STATUS_SUCCESS 0
 #endif
 
-#pragma pack(push)
-#pragma pack(1)
+#pragma pack(push)//保存内存对齐状态
+#pragma pack(1)//设置一字节对齐模式
 template <class T>
 struct _LIST_ENTRY_T
 {
@@ -129,7 +129,7 @@ struct _LDR_DATA_TABLE_ENTRY_T
     _LARGE_INTEGER LoadTime;
 };
 
-template <class T>
+template <class T>//进程环境诀？
 struct _PEB_LDR_DATA_T
 {
     DWORD Length;
@@ -267,7 +267,7 @@ struct _XSAVE_FORMAT64
     BYTE Reserved4[96];
 };
 
-struct _CONTEXT64
+struct _CONTEXT64//寄存器？？
 {
     DWORD64 P1Home;
     DWORD64 P2Home;
@@ -349,7 +349,7 @@ struct _CONTEXT64
 #define CONTEXT64_ALL (CONTEXT64_CONTROL | CONTEXT64_INTEGER | CONTEXT64_SEGMENTS | CONTEXT64_FLOATING_POINT | CONTEXT64_DEBUG_REGISTERS)
 #define CONTEXT64_XSTATE (CONTEXT_AMD64 | 0x20L)
 
-#pragma pack(pop)
+#pragma pack(pop)//恢复内存对齐状态
 
 #ifdef WOW64EXT_EXPORTS
 #   define SPEC dllexport

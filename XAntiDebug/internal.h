@@ -21,8 +21,12 @@
  */
 #pragma once
 
+/*
+用emit就是在当前位置直接插入数据（实际上是指令），一般是用来直接插入汇编里面没有的特殊指令，多数指令可以用asm内嵌汇编来做，没有必要用emit来做，除非你不想让其它人看懂你的代码。
+*/
 #define EMIT(a) __asm __emit (a)
 
+//0xe8 00000进入到下一条指令
 #define X64_Start_with_CS(_cs) \
     { \
     EMIT(0x6A) EMIT(_cs)                         /*  push   _cs             */ \
@@ -33,9 +37,9 @@
 
 #define X64_End_with_CS(_cs) \
     { \
-    EMIT(0xE8) EMIT(0) EMIT(0) EMIT(0) EMIT(0)                                 /*  call   $+5                   */ \
-    EMIT(0xC7) EMIT(0x44) EMIT(0x24) EMIT(4) EMIT(_cs) EMIT(0) EMIT(0) EMIT(0) /*  mov    dword [rsp + 4], _cs  */ \
-    EMIT(0x83) EMIT(4) EMIT(0x24) EMIT(0xD)                                    /*  add    dword [rsp], 0xD      */ \
+    EMIT(0xE8) EMIT(0) EMIT(0) EMIT(0) EMIT(0)                                 /*  call $+5                   */ \
+    EMIT(0xC7) EMIT(0x44) EMIT(0x24) EMIT(4) EMIT(_cs) EMIT(0) EMIT(0) EMIT(0) /*  mov  dword [rsp + 4], _cs  */ \
+    EMIT(0x83) EMIT(4) EMIT(0x24) EMIT(0xD)                                    /*  add  dword [rsp], 0xD      */ \
     EMIT(0xCB)                                                                 /*  retf                         */ \
     }
 
@@ -66,6 +70,7 @@
 
 //to fool M$ inline asm compiler I'm using 2 DWORDs instead of DWORD64
 //use of DWORD64 will generate wrong 'pop word ptr[]' and it will break stack
+//为了破坏堆栈平衡？
 union reg64
 {
     DWORD64 v;

@@ -24,8 +24,8 @@
 class CMemPtr
 {
 private:
-    void** m_ptr;
-    bool watchActive;
+    void** m_ptr;//内存指针
+    bool watchActive;//监视
 
 public:
     CMemPtr(void** ptr) : m_ptr(ptr), watchActive(true) {}
@@ -38,12 +38,13 @@ public:
             *m_ptr = 0; 
         } 
     }
-
+	//停止监视
     void disableWatch() { watchActive = false; }
 };
 
+//开始监视
 #define WATCH(ptr) \
     CMemPtr watch_##ptr((void**)&ptr)
-
+//停止监视
 #define DISABLE_WATCH(ptr) \
     watch_##ptr.disableWatch()

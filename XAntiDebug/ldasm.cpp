@@ -22,6 +22,7 @@
 
 #include "ldasm.h"
 
+//OPCODE码格式
 /*
  Instruction format:
  
@@ -603,6 +604,7 @@ unsigned char cflags_ex(uint8_t op)
 	return flags_table_ex[op];
 }
 
+//简易反汇编引擎？
 unsigned int ldasm(void *code, ldasm_data *ld, uint32_t is64)
 /*
  Description:

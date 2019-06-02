@@ -1,8 +1,9 @@
 #include <windows.h>
 #include "crc32.h"
 
+//
 #define CRC32C(c,d) (c=(c>>8)^crc_c[(c^(d))&0xFF])
-
+//校验数组
 static const unsigned int crc_c[256] = {
 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba,
 	0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3,
@@ -71,11 +72,13 @@ static const unsigned int crc_c[256] = {
 };
 
 
-unsigned int crc32(const void *buffer, unsigned int len) {
-  unsigned int i;
-  unsigned int crc32 = ~0L;
+unsigned int crc32(const void *buffer, unsigned int len) 
+{
+	unsigned int i = NULL;
+	unsigned int crc32 = ~0L;
 
-  for (i = 0; i < len; i++){
+  for (i = 0; i < len; i++)
+  {
       CRC32C(crc32, ((const unsigned char *)buffer)[i]);
   }
   return ~crc32;

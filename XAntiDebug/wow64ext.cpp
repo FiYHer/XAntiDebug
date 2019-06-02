@@ -26,8 +26,8 @@
 #include "wow64ext.h"
 #include "CMemPtr.h"
 
-HANDLE g_heap;
-BOOL g_isWow64;
+HANDLE g_heap;//进程默认堆句柄
+BOOL g_isWow64;//是否运行在64位系统的32位环境下
 
 // void* malloc(size_t size)
 // {
@@ -62,17 +62,18 @@ BOOL g_isWow64;
 
 BOOL InitWow64Ext()
 {
-
+	//检查进程是否运行在64位操作系统的32环境
 	IsWow64Process(GetCurrentProcess(), &g_isWow64);
+	//get process default heap handle
 	g_heap = GetProcessHeap();
-
 	return TRUE;
 }
 
-#pragma warning(push)
-#pragma warning(disable : 4409)
-DWORD64 __cdecl X64Call(DWORD64 func, int argC, ...)
+#pragma warning(push)//保存状态
+#pragma warning(disable : 4409)//忽略警告
+DWORD64 __cdecl X64Call(DWORD64 func, int argC, ...)//我的天可变参数
 {
+	//不是64位就不要理了
 	if (!g_isWow64)
 		return 0;
 
@@ -177,8 +178,10 @@ _ls_e:                                                  ;//
 
 void getMem64(void* dstMem, DWORD64 srcMem, size_t sz)
 {
-    if ((nullptr == dstMem) || (0 == srcMem) || (0 == sz))
-        return;
+	if ((nullptr == dstMem) || (0 == srcMem) || (0 == sz))
+	{
+		return;
+	}
 
     reg64 _src = { srcMem };
 
@@ -297,9 +300,11 @@ DWORD64 getTEB64()
 DWORD64 __cdecl GetModuleHandle64(wchar_t* lpModuleName)
 {
 	if (!g_isWow64)
+	{
 		return 0;
+	}
 
-    TEB64 teb64;
+    TEB64 teb64;//线程环境诀
     getMem64(&teb64, getTEB64(), sizeof(TEB64));
     
     PEB64 peb64;

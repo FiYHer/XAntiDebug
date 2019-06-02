@@ -2,7 +2,6 @@
 //
 
 #include "stdafx.h"
-#include <windows.h>
 
 #include "XAntiDebug/XAntiDebug.h"
 
@@ -10,11 +9,12 @@
 int _tmain(int argc, _TCHAR* argv[])
 {
 	//
-	// 推荐使用 FLAG_DETECT_DEBUGGER | FLAG_DETECT_HARDWAREBREAKPOINT,如果你对原理不熟悉的，不要用其他的
+	// 推荐使用 FLAG_DETECT_DEBUGGER | FLAG_DETECT_HARDWAREBREAKPOINT,
+	// 如果你对原理不熟悉的，不要用其他的
 	//
 
-	XAD_STATUS		status;
-	XAntiDebug		antiDbg(GetModuleHandle(NULL), FLAG_FULLON);
+	XAD_STATUS		status;//当前状态
+	XAntiDebug		antiDbg(GetModuleHandleW(NULL), FLAG_FULLON);
 	BOOL			result;
 
 	//

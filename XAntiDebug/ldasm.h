@@ -4,6 +4,11 @@
 #include <stdint.h>
 #include <string.h>
 
+/*
+我的天这里实现了一个小的反汇编引擎，以前学习过一点机器码的格式与解析
+要看懂这里还是要点时间
+*/
+
 #define	F_INVALID		0x01
 #define F_PREFIX		0x02
 #define	F_REX			0x04

@@ -45,12 +45,20 @@ BOOL safeWow64ReverDirectory(PVOID &arg)
  */
 VOID SafeGetNativeSystemInfo(__out LPSYSTEM_INFO lpSystemInfo)
 {
-	if (NULL == lpSystemInfo)    return;
-	typedef VOID(WINAPI *LPFN_GetNativeSystemInfo)(LPSYSTEM_INFO lpSystemInfo);
-	LPFN_GetNativeSystemInfo fnGetNativeSystemInfo = \
-		(LPFN_GetNativeSystemInfo)GetProcAddress(GetModuleHandleA("kernel32"), "GetNativeSystemInfo");
+	//有效性检查
+	if (!lpSystemInfo)
+	{
+		return;
+	}
 
-	if (NULL != fnGetNativeSystemInfo)
+	typedef VOID(WINAPI *LPFN_GetNativeSystemInfo)
+		(LPSYSTEM_INFO lpSystemInfo);
+
+	//Get Func Address
+	LPFN_GetNativeSystemInfo fnGetNativeSystemInfo = \
+		(LPFN_GetNativeSystemInfo)GetProcAddress(GetModuleHandleW(L"kernel32"), "GetNativeSystemInfo");
+
+	if (fnGetNativeSystemInfo)
 	{
 		fnGetNativeSystemInfo(lpSystemInfo);
 	}
@@ -147,6 +155,8 @@ LONG WINAPI VectoredExceptionHandler(PEXCEPTION_POINTERS pExceptionInfo)
 
 /*
  *	构造函数
+ *@moduleHandle:当前程序的实例句柄
+ *@flags:模式
  */
 XAntiDebug::XAntiDebug(HMODULE moduleHandle, DWORD flags)
 {
@@ -165,64 +175,83 @@ XAntiDebug::XAntiDebug(HMODULE moduleHandle, DWORD flags)
 	_isLoadStrongOD = FALSE;
 	_isSetHWBP = FALSE;
 
+	//save 
 	_moduleHandle = moduleHandle;
 	_flags = flags;
 
-	SYSTEM_INFO si;
-	RTL_OSVERSIONINFOW	osVer;
+	//计算机基本消息结构体
+	SYSTEM_INFO si = { 0 };
+	//操作系统版本信息结构体
+	RTL_OSVERSIONINFOW	osVer = { 0 };
 	SafeGetNativeSystemInfo(&si);
+	//判断处理器的体系结构 （AMD||Intel）|| （Intel Itanium架构）
 	if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ||
 		si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_IA64)
 	{
-		_isArch64 = TRUE;
+		_isArch64 = TRUE;//64 bit 
 	}
 
-	typedef LONG(__stdcall *fnRtlGetVersion)(PRTL_OSVERSIONINFOW lpVersionInformation);
-	fnRtlGetVersion pRtlGetVersion = (fnRtlGetVersion)GetProcAddress(GetModuleHandle(TEXT("ntdll")), "RtlGetVersion");
+	typedef LONG(__stdcall *fnRtlGetVersion)
+		(PRTL_OSVERSIONINFOW lpVersionInformation);
+
+	fnRtlGetVersion pRtlGetVersion = (fnRtlGetVersion)
+		GetProcAddress(GetModuleHandleW(XAD_NTDLL), "RtlGetVersion");
 
 	if (pRtlGetVersion)
 	{
 		pRtlGetVersion(&osVer);
 	}
 
+	//获取主系统和次系统的版本
 	_major = osVer.dwMajorVersion;
 	_minor = osVer.dwMinorVersion;
 
+	//确定进程是否运行在64位系统的32位环境下
 	IsWow64Process((HANDLE)-1, &_isWow64);
 
+	//处理器架构符合 && 运行32位环境下
 	if (_isArch64 && _isWow64)
 	{
-		_isWow64FsReDriectory = TRUE;
+		_isWow64FsReDriectory = TRUE;//在WOW65目录下进行操作
 	}
 
-	_pageSize = si.dwPageSize;
+	_pageSize = si.dwPageSize;//save system page size
 
 	//
-	// ThreadHideFromDebugger
+	// 第二个参数设置位 0X11 = ThreadHideFromDebugger
+	// 等于告诉操作系统将所有的附加进行结束
+	//
+	// 用来设置线程优先级 SetInformationThread
+	// ThreadHideFromDebugger内部设置内核结构ETHREAD16的HideThreadFromDebugger成员。
+	// 一旦这个成员设置以后，主要用来向调试器发送事件的内核函数_DbgkpSendApiMessage()
+	// 将不再被调用。
 	//
 	typedef NTSTATUS(NTAPI* fnNtSetInformationThread)(
-		_In_ HANDLE ThreadHandle,
-		_In_ DWORD_PTR ThreadInformationClass,
+		_In_ HANDLE ThreadHandle,//GetCurrentThread
+		_In_ DWORD_PTR ThreadInformationClass,//0x11
 		_In_ PVOID ThreadInformation,
 		_In_ ULONG ThreadInformationLength
 		);
 
 	fnNtSetInformationThread pfnNtSetInformationThread = \
 		(fnNtSetInformationThread)GetProcAddress(GetModuleHandleW(XAD_NTDLL), "NtSetInformationThread");
+
 	if (pfnNtSetInformationThread)
 	{
 #ifndef _DEBUG
 		LONG status;
 
+		// first set GetCurrentThread()
 		pfnNtSetInformationThread((HANDLE)-2, 0x11, NULL, NULL);
 
 		//
 		// StrongOD 驱动处理不当
 		//
-		status = pfnNtSetInformationThread((HANDLE)-2, 0x11, (PVOID)sizeof(PVOID), sizeof(PVOID));
-		if (status == 0)
+		status = pfnNtSetInformationThread((HANDLE)-2, 0x11,
+			(PVOID)sizeof(PVOID), sizeof(PVOID));
+		if (!status)
 		{
-			_isLoadStrongOD = TRUE;
+			_isLoadStrongOD = TRUE;//discover strongOD plugs
 		}
 #endif
 	}
@@ -252,12 +281,13 @@ XAD_STATUS XAntiDebug::XAD_Initialize()
 		return XAD_OK;
 	}
 
+	//当前模式包含checksum_ntos kenl 且版本合适
 	if ((_flags & FLAG_CHECKSUM_NTOSKRNL) && _major >= 6 && _minor >= 1)
 	{
 		//
 		//检测正在运行的NTOS文件路径. 因NT函数枚举出来的路径是CHAR，这里都用CHAR
-		//
-
+		// 获取模块进程信息
+		/* NtQueryInformationProcess函数是一个未公开的API，它的第二个参数可以用来查询进程的调试端口。如果进程被调试，那么返回的端口值会是-1，否则就是其他的值。由于这个函数是一个未公开的函数，因此需要使用LoadLibrary和GetProceAddress的方法获取调用地址  */
 		typedef LONG(WINAPI* fnZwQuerySystemInformation)(
 			LONG_PTR SystemInformationClass,
 			PVOID SystemInformation,
@@ -265,31 +295,41 @@ XAD_STATUS XAntiDebug::XAD_Initialize()
 			PULONG ReturnLength
 			);
 
-		CHAR	sysDir[MAX_PATH];
-		DWORD	MySystemModuleInformation = 11;
+		CHAR	sysDir[MAX_PATH] = { 0 };
+		DWORD	MySystemModuleInformation = 11;//功能号 枚举内核中已经加载的模块
 
-		LONG	status;
-		ULONG	systemModuleSize = 0;
-		PVOID	systemModuleBuf;
+		LONG	status = 0L;
+		ULONG	systemModuleSize = 0L;
+		PVOID	systemModuleBuf = nullptr;
 
-		fnZwQuerySystemInformation pfnZwQuerySystemInformation;
+		fnZwQuerySystemInformation pfnZwQuerySystemInformation = nullptr;
 
-		GetSystemDirectoryA(sysDir, MAX_PATH);
+		GetSystemDirectoryA(sysDir, MAX_PATH);//get current system path
+
+		//get func address
 		pfnZwQuerySystemInformation = \
 			(fnZwQuerySystemInformation)GetProcAddress(GetModuleHandleW(XAD_NTDLL), "ZwQuerySystemInformation");
+
+		//fail
 		if (!pfnZwQuerySystemInformation)
 		{
 			return XAD_ERROR_OPENNTOS;
 		}
 
+		//get size
 		pfnZwQuerySystemInformation(MySystemModuleInformation, NULL, NULL, &systemModuleSize);
-		if (systemModuleSize == 0)
+
+		if (!systemModuleSize)
 		{
 			return XAD_ERROR_OPENNTOS;
 		}
 
 		systemModuleBuf = calloc(1, systemModuleSize);
+		//if (!systemModuleBuf) {}
+
+		//get kernel module info
 		status = pfnZwQuerySystemInformation(MySystemModuleInformation, systemModuleBuf, systemModuleSize, &systemModuleSize);
+
 		if (status != 0) //STATUS_SUCCESS
 		{
 			return XAD_ERROR_OPENNTOS;
@@ -303,7 +343,7 @@ XAD_STATUS XAntiDebug::XAD_Initialize()
 		size_t	matchLen = strlen(match);
 		for (size_t i = 0; i < (systemModuleSize - matchLen); i++, src++)
 		{
-			if (strncmp(src, match, matchLen) == 0)
+			if (!strncmp(src, match, matchLen))
 			{
 				break;
 			}
@@ -315,53 +355,68 @@ XAD_STATUS XAntiDebug::XAD_Initialize()
 		free(systemModuleBuf);
 	}
 
+	//checksum_codesection
 	if (_flags & FLAG_CHECKSUM_CODESECTION)
 	{
-		PIMAGE_DOS_HEADER	dosHead;
-		PIMAGE_NT_HEADERS	ntHead;
-		PIMAGE_SECTION_HEADER secHead;
-		CODE_CRC32	codeSection;
+		PIMAGE_DOS_HEADER   	dosHead = nullptr;
+		PIMAGE_NT_HEADERS	    ntHead = nullptr;
+		PIMAGE_SECTION_HEADER   secHead = nullptr;
+		CODE_CRC32				codeSection = { 0 };
 
-		if (IsBadReadPtr(_moduleHandle, sizeof(void*)) == 0)
+		//内存可用性判断
+		if (!IsBadReadPtr(_moduleHandle, sizeof(void*)))
 		{
+			//get dos point
 			dosHead = (PIMAGE_DOS_HEADER)_moduleHandle;
 
-			if (dosHead == NULL || dosHead->e_magic != IMAGE_DOS_SIGNATURE)
+			//不是一个有效的PE文件
+			if (!dosHead || dosHead->e_magic != IMAGE_DOS_SIGNATURE)
 			{
 				return XAD_ERROR_MODULEHANDLE;
 			}
 
-			ntHead = ImageNtHeader(dosHead);
-			if (ntHead == NULL || ntHead->Signature != IMAGE_NT_SIGNATURE)
+			ntHead = ImageNtHeader(dosHead);//get Nt point
+
+			if (!ntHead || ntHead->Signature != IMAGE_NT_SIGNATURE)
 			{
 				return XAD_ERROR_MODULEHANDLE;
 			}
 
-			secHead = IMAGE_FIRST_SECTION(ntHead);
+			secHead = IMAGE_FIRST_SECTION(ntHead);//get first section point
 			_codeCrc32.clear();
 
-			for (size_t Index = 0; Index < ntHead->FileHeader.NumberOfSections; Index++)
+			for (size_t Index = 0;
+				Index < ntHead->FileHeader.NumberOfSections;//section number
+				Index++)
 			{
 				//
 				//可读、不可写的区段默认全部校验
 				//
 
+				//section character check
 				if ((secHead->Characteristics & IMAGE_SCN_MEM_READ) &&
 					!(secHead->Characteristics & IMAGE_SCN_MEM_WRITE))
 				{
-					codeSection.m_va = (PVOID)((DWORD_PTR)_moduleHandle + secHead->VirtualAddress);
+					//get section begin address
+					codeSection.m_va = (PVOID)((DWORD_PTR)_moduleHandle + 
+						secHead->VirtualAddress);
+					//get section size
 					codeSection.m_size = secHead->Misc.VirtualSize;
+					//get section check
 					codeSection.m_crc32 = crc32(codeSection.m_va, codeSection.m_size);
+					//save section check every
 					_codeCrc32.push_back(codeSection);
 				}
-				secHead++;
+				secHead++;//point next section
 			}
 		}
 
 	}
 
+	//detect_debugger
 	if (_flags & FLAG_DETECT_DEBUGGER)
 	{
+		//check procesor bit
 		if (_isArch64)
 		{
 			//
@@ -370,7 +425,8 @@ XAD_STATUS XAntiDebug::XAD_Initialize()
 #ifndef _WIN64
 			InitWow64Ext();
 #endif
-			_MyQueryInfomationProcess = (DWORD64)GetProcAddress64(GetModuleHandle64(XAD_NTDLL), "ZwQueryInformationProcess");
+			_MyQueryInfomationProcess = (DWORD64)
+				GetProcAddress64(GetModuleHandle64(XAD_NTDLL), "ZwQueryInformationProcess");
 			if (_MyQueryInfomationProcess == NULL)
 			{
 				return XAD_ERROR_NTAPI;
